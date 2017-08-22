@@ -1,0 +1,214 @@
+#pragma once 
+#include"HuffmanTree.h"
+#include<string>
+typedef long long  LongType;
+struct CharInf
+{
+	char _ch;//	读取的字符
+	LongType _count;//字符出现的次数
+	string _code;//哈夫曼编码
+	CharInf(LongType count = 0)
+		:_count(count)
+	{}
+	bool operator!=(const CharInf& ch)
+	{
+		return  ch._count != _count;
+	}
+	CharInf operator+(const CharInf & ch)
+	{
+		return CharInf(_count + ch._count);
+	}
+	bool operator<(const CharInf& ch)
+	{
+		return _count <ch._count;
+	} 
+};
+class FileCompress
+{
+public:
+	FileCompress()
+	{
+		for(size_t i = 0 ;i <256;++i)
+		{
+			_infos[i]._ch = i;
+			_infos[i]._count =  0;	
+		}
+	
+	}
+	void Compress(const  char* filename)
+	{
+		assert(filename);
+		//1、统计字符出现的次数
+		FILE* fout =fopen(filename ,"r");
+		assert(fout);
+		char ch = fgetc(fout);
+		while(ch!= EOF)
+		{
+			_infos[(unsigned char )ch]._count++;
+			ch = fgetc(fout);
+		}
+		//2、生成HuffmanTree
+		CharInf  invalid;
+		invalid._count = 0;
+		HuffmanTree<CharInf> huff(_infos,256,invalid);
+
+
+		//将字符出现的次数存到文件.config
+		/*
+		string comfigname(filename);
+		comfigname += ".config";
+		FILE  * fp = fopen(comfigname.c_str(),"w");
+
+
+		for(size_t i = 0;i < 256;i++)
+		{
+			if(_infos[i]._count)
+			{
+				fputc(_infos[i]._ch,fp);
+				fputc(',',fp);
+				fputc(_infos[i]._count,fp);
+				fputc('\n',fp);
+			}
+		}
+		fclose(fp);
+		*/
+		//3、获取哈夫曼编码
+		GetHuffmanCode(huff.GetRoot());
+		//4、压缩
+
+
+		string compressfile  =filename ;
+		compressfile+= ".huff";
+		FILE * fIn = fopen(compressfile.c_str() ,"wb");
+		assert(fIn);
+		fseek(fout,0,SEEK_SET);
+		ch =  fgetc(fout);
+		char value = 0;
+		int pos = 0;
+		while(ch != EOF)
+		{
+			const string& code  = _infos[(unsigned char )ch]._code;
+			for(size_t i = 0 ;i < code.size();++i)
+			{
+				value |= (code[i] -'0');
+				pos++;
+				if(pos!= 8)
+				{
+					value<<= 1;
+					
+				}
+				else
+				{
+					fputc(value,fIn);
+					value= 0;
+					pos= 0;
+				}	
+			}
+			ch = fgetc(fout);
+		}
+		if(pos!= 0)
+		{
+			value<<= (7 - pos);
+			fputc(value,fIn);
+		}
+		fclose(fIn);
+		fclose(fout);
+	}
+	void UnCompress(const  char  * filename)
+	{
+		//得到文件名 
+		assert(filename);
+		string name(filename);
+		size_t pos  = name.rfind('.');
+		name  = name.replace(pos,name.size()-pos,".unhuff");
+		
+		FILE *fIn  = fopen(name.c_str(),"w");
+		assert(fIn);
+	
+		//重新生成哈夫曼树
+		
+		CharInf  invalid;
+		invalid._count = 0;
+		HuffmanTree<CharInf> huff(_infos,256,invalid);
+		
+		//从文件中读数据
+		FILE *fout = fopen(filename,"r");
+		assert(fout);
+		HuffmanTreeNode<CharInf>* root  = huff.GetRoot();
+		HuffmanTreeNode<CharInf>* cur = root;
+		char ch  = fgetc(fout);
+		LongType count  = root->_weight._count;
+		while(1)
+		{
+			char value =  1;
+			int idex = 7;
+			while(cur && idex>=0)
+			{
+				if(ch&(value<<idex))
+				{
+					cur = cur->_right;
+				}
+				else
+				{
+					cur = cur->_left;
+				}
+				if(cur->_left == NULL &&cur->_right == NULL)
+				{
+					fputc(cur->_weight._ch,fIn);
+					count-- ;
+					cur= root;
+				}
+				idex--;
+				if(count == 0)
+				{
+					fclose(fIn);
+					fclose(fout);
+					return;
+				}
+			}
+			ch  = fgetc(fout);
+		}
+	}
+protected:
+	void GetHuffmanCode(HuffmanTreeNode<CharInf> *root)
+	{
+		if(root == NULL)
+			return  ;
+		if(root->_left == NULL && root->_right == NULL)
+		{
+			HuffmanTreeNode<CharInf> *cur = root;
+			HuffmanTreeNode<CharInf> *parent = root->_parent;
+			string &code  =  _infos[(unsigned char)root->_weight._ch]._code;
+			while(parent)
+			{
+				if(parent->_left == cur)
+				{
+					code.push_back('0');
+				}
+				else
+				{
+					code.push_back('1'); 
+				}
+				cur=  parent;
+				parent = cur->_parent;
+			}
+			std::reverse(code.begin(),code.end());
+			return ;
+		}
+		GetHuffmanCode(root->_left);
+		GetHuffmanCode(root->_right);
+	}
+protected:
+	CharInf _infos[256];
+};
+
+
+void TestFileCompress()
+{
+	FileCompress fc;
+	fc.Compress("Input");
+	fc.UnCompress("Input.huff");
+}
+
+
+
